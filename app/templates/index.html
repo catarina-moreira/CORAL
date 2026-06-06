@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>CORAL</title>
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- DICOM Parser (cornerstone dicomParser) -->
+    <script src="https://unpkg.com/dicom-parser@1.8.21/dist/dicomParser.min.js"></script>
+    <!-- Application CSS -->
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading hidden">
+        <div class="loading-text">Loading... <span id="loadingProgress"></span></div>
+        <div class="loading-progress" id="loadingDetail"></div>
+    </div>
+    
+    <!-- File Browser Modal (Google Drive + Local) -->
+    <div id="driveModal" class="drive-modal">
+        <div class="drive-modal-content">
+            <div class="drive-modal-header">
+                <h2 id="browserModalTitle">📁 Dataset Browser</h2>
+                <button class="drive-modal-close" onclick="closeDriveModal()" title="Close">✕</button>
+            </div>
+            <!-- Tab buttons -->
+            <div class="browser-tabs">
+                <button class="browser-tab active" id="tabLocal" onclick="switchBrowserTab('local')">
+                    💻 Local Folder (Fast)
+                </button>
+                <button class="browser-tab" id="tabDrive" onclick="switchBrowserTab('drive')">
+                    ☁️ Google Drive
+                </button>
+            </div>
+            <div class="drive-breadcrumb" id="driveBreadcrumb">
+                <span class="drive-breadcrumb-item" onclick="browseLocal()">🏠 Root</span>
+            </div>
+            <div class="drive-content" id="driveContent">
+                <div class="drive-loading">Loading...</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 3D View Modal -->
+    <div id="modal3D" class="modal-3d">
+        <div class="modal-3d-content">
+            <div class="modal-3d-header">
+                <h2>🧊 3D Mask Visualization</h2>
+                <button class="modal-3d-close" onclick="close3DView()" title="Close">✕</button>
+            </div>
+            <div class="modal-3d-canvas-container">
+                <canvas id="canvas3D"></canvas>
+            </div>
+            <div class="modal-3d-controls">
+                <label>Display:</label>
+                <select id="view3DMode" onchange="update3DView()">
+                    <option value="surface">Surface Voxels (Fast)</option>
+                    <option value="marching">Marching Cubes (Smooth)</option>
+                    <option value="points">Point Cloud</option>
+                </select>
+                <label>Shading:</label>
+                <select id="shadingMode3D" onchange="updateShading()">
+                    <option value="smooth">Smooth (Phong)</option>
+                    <option value="flat">Flat (Faceted)</option>
+                </select>
+                <label>Point Size:</label>
+                <input type="range" id="pointSize3D" min="1" max="10" value="3" oninput="updatePointSize()">
+                <label>
+                    <input type="checkbox" id="autoRotate3D" checked onchange="toggleAutoRotate()"> Auto-rotate
+                </label>
+                <span class="modal-3d-info">Drag to rotate • Scroll to zoom • Right-drag to pan</span>
+                <span id="meshInfo3D" class="modal-3d-info" style="margin-left:20px;color:#00d9ff;"></span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <h1>🏥 CORAL</h1>
+            <div class="app-tagline"><strong>CO</strong>lonography <strong>R</strong>adiology <strong>A</strong>nnotation <strong>L</strong>ab</div>
+            
+            <h2>📂 Load Dataset From Server</h2>
+            <button class="btn btn-drive" onclick="openDriveModal()">📁 Browse Data</button>
+            <div class="load-hint">💡 Local folder = instant loading!</div>
+            
+            <div id="loadedCtFile" class="loaded-file hidden">
+                <div class="loaded-file-label">CT Scan</div>
+                <div class="loaded-file-name" id="loadedCtFileName">-</div>
+            </div>
+            
+            <div id="loadedCsvFile" class="loaded-file hidden">
+                <div class="loaded-file-label">Polyp Data</div>
+                <div class="loaded-file-name" id="loadedCsvFileName">-</div>
+            </div>
+            
+            <!-- DICOM Loading Progress (shown during slice-by-slice loading) -->
+            <div id="dicomLoadingProgress" class="dicom-loading-container hidden">
+                <div class="dicom-loading-header">
+                    <span class="dicom-loading-label">📥 Loading DICOM slices:</span>
+                    <span class="dicom-loading-count" id="dicomLoadingCount">0/0</span>
+                </div>
+                <div class="dicom-loading-bar">
+                    <div class="dicom-loading-progress" id="dicomProgressBar" style="width: 0%"></div>
+                </div>
+                <div class="dicom-slice-status" id="dicomSliceStatus">Preparing...</div>
+            </div>
+            
+            <div class="divider"></div>
+            
+            <h2>📂 Load from Computer</h2>
+            <input type="file" id="fileInput" accept=".nii,.nii.gz,.gz">
+            <div id="status"></div>
+            
+            <h2>📋 Load Polyp Data</h2>
+            <input type="file" id="csvInput" accept=".csv">
+            <div id="csvStatus"></div>
+            
+            <h2>🎭 Load Existing Mask</h2>
+            <input type="file" id="maskInput" accept=".nii,.nii.gz,.gz" disabled>
+            <div id="maskStatus" style="font-size: 0.75em; color: #888; margin-top: 5px;">Load CT scan first</div>
+            
+            <div class="divider"></div>
+            
+            <h2>🔍 Navigation</h2>
+            <div class="input-group">
+                <label>Go to Slice:</label>
+                <div class="input-row">
+                    <input type="number" id="gotoSlice" min="1" value="1" onkeypress="if(event.key==='Enter')gotoSliceNum()">
+                    <button class="btn btn-secondary btn-small" onclick="gotoSliceNum()">Go</button>
+                </div>
+            </div>
+            
+            <div class="input-group" style="margin-top: 10px;">
+                <label>Jump to Annotated Slices: <span id="annotatedSliceCount" style="color: #4caf50;">(0)</span></label>
+                <div class="input-row">
+                    <button class="btn btn-annotated-nav" onclick="goToPrevAnnotatedSlice()" title="Previous annotated slice (Shift+↑)">◀ Prev</button>
+                    <button class="btn btn-annotated-nav" onclick="goToNextAnnotatedSlice()" title="Next annotated slice (Shift+↓)">Next ▶</button>
+                </div>
+                <div id="annotatedSlicesList" class="annotated-slices-list"></div>
+            </div>
+            
+            <div class="divider"></div>
+            
+            <h2>🖼️ Window / Level</h2>
+            
+            <div class="input-group">
+                <label>Window Center (Level): <input type="number" id="wcVal" value="40" min="-1000" max="1000" style="width: 70px; padding: 2px 5px; font-size: 0.9em; background: #2a2a3e; border: 1px solid #444; color: #fff; border-radius: 3px;" onchange="updateWLFromInput()"> HU</label>
+                <input type="range" id="windowCenter" min="-1000" max="1000" value="40" oninput="updateWL()">
+            </div>
+            
+            <div class="input-group">
+                <label>Window Width: <input type="number" id="wwVal" value="400" min="1" max="4000" style="width: 70px; padding: 2px 5px; font-size: 0.9em; background: #2a2a3e; border: 1px solid #444; color: #fff; border-radius: 3px;" onchange="updateWLFromInput()"> HU</label>
+                <input type="range" id="windowWidth" min="1" max="4000" value="400" oninput="updateWL()">
+            </div>
+            
+            <button class="btn btn-secondary" onclick="resetWindow()" style="width:100%; margin-top:8px;">🔄 Reset Window</button>
+            
+            <div class="divider"></div>
+            
+            <h2>🎨 Annotation</h2>
+            <label>Label:</label>
+            <select id="labelSelect" onchange="onLabelChange()">
+                <option value="1">Colon</option>
+                <option value="2">Polyp</option>
+                <option value="3">Fluid Pockets</option>
+                <option value="4">Other</option>
+            </select>
+            
+            <div class="slider-container">
+                <div class="slider-label"><span>Brush Size:</span><span id="brushSizeVal">15</span></div>
+                <input type="range" id="brushSize" min="1" max="50" value="15" oninput="updateBrushSize()">
+            </div>
+            
+            <div style="display: flex; gap: 5px; margin: 10px 0;">
+                <button class="btn btn-secondary" id="drawBtn" onclick="setDrawMode()" style="flex:1; background:#00d9ff; color:#000;">🖌️ Draw</button>
+                <button class="btn btn-secondary" id="eraseBtn" onclick="setEraseMode()" style="flex:1;">🧹 Erase</button>
+            </div>
+            
+            <div style="margin: 10px 0;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.85em;">
+                    <input type="checkbox" id="edgeAwareBrush" checked style="width: auto; margin: 0;">
+                    🎯 Edge-Aware Brush (clips at edges)
+                </label>
+            </div>
+            
+            <div style="margin: 10px 0;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.85em;">
+                    <input type="checkbox" id="fluidBrush" style="width: auto; margin: 0;" onchange="toggleFluidBrush()">
+                    💧 Fluid Brush (bright regions only)
+                </label>
+            </div>
+            
+            <div id="fluidBrushOptions" style="display: none; margin-left: 20px; padding: 8px; background: rgba(0,200,255,0.1); border-radius: 4px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 8px;">
+                            <input type="checkbox" id="fluidBoundingBox" style="width: auto; margin: 0;" onchange="toggleBoundingBoxMode()">
+                            <span style="color: #4fc3f7;">📦 Bounding Box Mode</span>
+                        </label>
+                        <div id="bboxInstructions" style="display: none; font-size: 0.7em; color: #4fc3f7; margin-bottom: 8px; padding: 5px; background: rgba(0,150,255,0.2); border-radius: 3px;">
+                            Draw a rectangle around the fluid region.<br>
+                            Everything within HU range will be filled automatically.
+                        </div>
+                <div style="font-size: 0.7em; color: #4fc3f7; margin-bottom: 8px;">
+                    🌊 Flood Fill mode active - click to fill bright regions
+                </div>
+                <div style="margin-top: 8px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8em; color: #888;">
+                        <input type="checkbox" id="showFluidAdvanced" style="width: auto; margin: 0;" onchange="toggleFluidAdvanced()">
+                        Show advanced options
+                    </label>
+                </div>
+                <div id="fluidAdvancedOptions" style="display: none; margin-top: 8px;">
+                    <div style="margin-bottom: 8px;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8em;">
+                            <input type="checkbox" id="fluidFloodFill" checked style="width: auto; margin: 0;">
+                            🌊 Flood Fill mode (click to fill region)
+                        </label>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Min HU:</span><span id="fluidMinHUVal">200</span></div>
+                        <input type="range" id="fluidMinHU" min="-1000" max="1000" value="200" oninput="document.getElementById('fluidMinHUVal').textContent=this.value">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label"><span>Max HU:</span><span id="fluidMaxHUVal">1200</span></div>
+                        <input type="range" id="fluidMaxHU" min="-500" max="2000" value="1200" oninput="document.getElementById('fluidMaxHUVal').textContent=this.value">
+                    </div>
+                     <div class="slider-container">
+                        <div class="slider-label"><span>HU Tolerance:</span><span id="fluidHUTolVal">150</span></div>
+                        <input type="range" id="fluidHUTolerance" min="20" max="500" value="150" oninput="document.getElementById('fluidHUTolVal').textContent=this.value">
+                    </div>
+                    <div style="font-size: 0.6em; color: #888; margin-top: 5px;">
+                        <strong>Min/Max HU:</strong> Global range for fluid<br>
+                        <strong>HU Tolerance:</strong> Max difference between adjacent pixels (edge sensitivity)
+                    </div>
+                    <div style="font-size: 0.65em; color: #4fc3f7; margin-top: 4px;">
+                        <strong>Min HU:</strong> Tagged stool typically 150-400 HU<br>
+                        <strong>Max HU:</strong> Exclude bone (typically >500 HU)
+                    </div>
+                </div>
+            </div>
+            
+            <div style="margin: 10px 0;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8em; color: #888;">
+                    <input type="checkbox" id="showBrushAdvanced" style="width: auto; margin: 0;" onchange="toggleBrushAdvanced()">
+                    Show advanced options
+                </label>
+            </div>
+            
+            <div id="brushAdvancedOptions" style="display: none;">
+                <div class="slider-container">
+                    <div class="slider-label"><span>Edge Threshold:</span><span id="edgeSensVal">30</span>%</div>
+                    <input type="range" id="edgeSensitivity" min="5" max="100" value="30" oninput="document.getElementById('edgeSensVal').textContent=this.value">
+                </div>
+                
+                <div class="slider-container">
+                    <div class="slider-label"><span>HU Tolerance:</span><span id="huTolVal">100</span> HU</div>
+                    <input type="range" id="huTolerance" min="10" max="500" value="100" oninput="document.getElementById('huTolVal').textContent=this.value">
+                </div>
+            </div>
+            
+            <div class="divider"></div>
+            
+            <h2>🐍 Contour Refinement</h2>
+            <div class="input-group">
+                <label>Method:</label>
+                <select id="refineMethod">
+                    <option value="combined">Combined (Recommended)</option>
+                    <option value="grabcut">GrabCut (Graph-Based)</option>
+                    <option value="randomwalk">Random Walker</option>
+                    <option value="fluidgrabcut">💧 Fluid-aware GrabCut</option>
+                </select>
+            </div>
+            
+            <div style="margin: 10px 0;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8em; color: #888;">
+                    <input type="checkbox" id="showRefineAdvanced" style="width: auto; margin: 0;" onchange="toggleRefineAdvanced()">
+                    Show advanced options
+                </label>
+            </div>
+            
+            <div id="refineAdvancedOptions" style="display: none;">
+                <div class="slider-container">
+                    <div class="slider-label"><span>Iterations:</span><span id="refineIterVal">30</span></div>
+                    <input type="range" id="refineIterations" min="5" max="100" value="30" oninput="document.getElementById('refineIterVal').textContent=this.value">
+                </div>
+                <div class="slider-container">
+                    <div class="slider-label"><span>Edge Strength:</span><span id="refineEdgeVal">0.6</span></div>
+                    <input type="range" id="refineEdgeStrength" min="0" max="100" value="60" oninput="document.getElementById('refineEdgeVal').textContent=(this.value/100).toFixed(2)">
+                </div>
+                <div class="slider-container">
+                    <div class="slider-label"><span>Smoothness:</span><span id="refineSmoothVal">0.3</span></div>
+                    <input type="range" id="refineSmoothness" min="0" max="100" value="30" oninput="document.getElementById('refineSmoothVal').textContent=(this.value/100).toFixed(2)">
+                </div>
+            </div>
+            
+            <button class="btn btn-refine" onclick="refineContours()">🐍 Refine to Edges (R)</button>
+            <div style="font-size: 0.65em; color: #888; margin-top: 5px;">
+                <strong>GrabCut:</strong> Graph-based, uses HU statistics<br>
+                <strong>Random Walker:</strong> Probability diffusion<br>
+                <strong>Combined:</strong> GrabCut + smoothing<br>
+                <span style="color: #4fc3f7;"><strong>💧 Fluid GrabCut:</strong> Uses Min/Max HU thresholds</span>
+            </div>
+            
+            <div class="divider"></div>
+            
+            <h2>📋 Mask Propagation</h2>
+            <div style="display: flex; gap: 5px; margin: 10px 0;">
+                <button class="btn btn-propagate" onclick="propagateMask(-1)" title="Copy mask to previous slice and refine">⬆️ Prev</button>
+                <button class="btn btn-propagate" onclick="propagateMask(1)" title="Copy mask to next slice and refine">⬇️ Next</button>
+            </div>
+            
+            <div class="input-group">
+                <label>Propagate to multiple slices:</label>
+                <div class="input-row">
+                    <input type="number" id="propagateCount" min="1" max="50" value="5" style="width: 60px;">
+                    <button class="btn btn-secondary btn-small" onclick="propagateMultiple(-1)" title="Propagate to N previous slices">⬆️ N</button>
+                    <button class="btn btn-secondary btn-small" onclick="propagateMultiple(1)" title="Propagate to N next slices">⬇️ N</button>
+                </div>
+            </div>
+            
+            <div style="margin: 10px 0;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.8em; color: #888;">
+                    <input type="checkbox" id="propagateRefine" checked style="width: auto; margin: 0;">
+                    Auto-refine after propagation
+                </label>
+            </div>
+            
+            <div class="input-group">
+                <label>Refinement method:</label>
+                <select id="propagateMethod" onchange="togglePropagateMethod()">
+                    <option value="combined" selected>Combined (Default for Colon)</option>
+                    <option value="randomwalk">Random Walker</option>
+                    <option value="grabcut">GrabCut (Graph-Based)</option>
+                    <option value="fluid">💧 Fluid-aware (bright regions)</option>
+                </select>
+            </div>
+            
+            <div id="fluidPropagateInfo" style="display: none; font-size: 0.65em; color: #4fc3f7; margin: 5px 0; padding: 5px; background: rgba(0,200,255,0.1); border-radius: 4px;">
+                Uses Min/Max HU from Fluid Brush settings.<br>
+                Stays connected to original mask location.<br>
+                Excludes bone by Max HU threshold.
+            </div>
+            
+            <div style="font-size: 0.65em; color: #888; margin-top: 5px;">
+                Copies mask to adjacent slices and refines to fit anatomy.
+            </div>
+            
+            <div class="divider"></div>
+            
+            <h2>Actions</h2>
+            <button class="btn btn-secondary" onclick="saveMask()">💾 Save Slice Mask</button>
+            <button class="btn btn-danger" onclick="clearMask()">🗑️ Clear Slice</button>
+            <button class="btn btn-primary" onclick="exportMasks()">📥 Export All Masks</button>
+            
+            <div class="legend">
+                <h2>Legend <span style="font-size: 0.6em; color: #888;">(click to toggle)</span></h2>
+                <div class="legend-item" id="legend-1" onclick="toggleLabelVisibility(1)" style="cursor: pointer;" title="Click to toggle visibility">
+                    <div class="legend-color" style="background:#B79069"></div>
+                    <span class="legend-text">Colon</span>
+                    <span class="legend-eye" id="eye-1">👁️</span>
+                </div>
+                <div class="legend-item" id="legend-2" onclick="toggleLabelVisibility(2)" style="cursor: pointer;" title="Click to toggle visibility">
+                    <div class="legend-color" style="background:#00FF00"></div>
+                    <span class="legend-text">Polyp</span>
+                    <span class="legend-eye" id="eye-2">👁️</span>
+                </div>
+                <div class="legend-item" id="legend-3" onclick="toggleLabelVisibility(3)" style="cursor: pointer;" title="Click to toggle visibility">
+                    <div class="legend-color" style="background:#0000FF"></div>
+                    <span class="legend-text">Fluid Pockets</span>
+                    <span class="legend-eye" id="eye-3">👁️</span>
+                </div>
+                <div class="legend-item" id="legend-4" onclick="toggleLabelVisibility(4)" style="cursor: pointer;" title="Click to toggle visibility">
+                    <div class="legend-color" style="background:#FFFF00"></div>
+                    <span class="legend-text">Other</span>
+                    <span class="legend-eye" id="eye-4">👁️</span>
+                </div>
+            </div>
+            
+            <div class="stats" id="stats">
+                <div class="stat-box"><div class="stat-value" id="statVoxels">0</div><div class="stat-label">Voxels</div></div>
+                <div class="stat-box"><div class="stat-value" id="statSlices">0/0</div><div class="stat-label">Slices</div></div>
+                <div class="stat-box"><div class="stat-value" id="statProgress">0%</div><div class="stat-label">Progress</div></div>
+            </div>
+            
+            <div class="debug-panel">
+                <h3>🔧 Spatial Info</h3>
+                <pre id="debugInfo">Load a file to see info...</pre>
+            </div>
+        </div>
+        
+        <!-- Main Content Area -->
+        <div class="main">
+            <!-- Combined Toolbar: Slice Info + Zoom + Undo/Redo/Reset -->
+            <div class="toolbar">
+                <div class="toolbar-section slice-info-section">
+                    <span class="slice-info-item">Slice <strong id="sliceNum">0</strong> / <span id="totalSlices">0</span></span>
+                    <span class="slice-info-item">WC: <strong id="wcTop">40</strong> HU</span>
+                    <span class="slice-info-item">WW: <strong id="wwTop">400</strong> HU</span>
+                    <span class="slice-info-item">Z: <strong id="physicalZ">--</strong> mm</span>
+                </div>
+                
+                <div class="toolbar-divider"></div>
+                
+                <div class="toolbar-section">
+                    <label>🔍</label>
+                    <button class="zoom-btn" onclick="zoomOut()" title="Zoom Out (scroll down)">−</button>
+                    <input type="range" id="zoomSlider" min="25" max="400" value="100" oninput="setZoom(this.value)">
+                    <button class="zoom-btn" onclick="zoomIn()" title="Zoom In (scroll up)">+</button>
+                    <span class="zoom-value" id="zoomValue">100%</span>
+                    <button class="action-btn" onclick="fitToView()" title="Fit to view (F)" style="font-size: 0.8em; width: auto; padding: 0 8px;">Fit</button>
+                    <button class="action-btn" onclick="resetZoom()" title="Reset to 100% (0)" style="font-size: 0.8em; width: auto; padding: 0 8px;">100%</button>
+                </div>
+                
+                <div class="toolbar-divider"></div>
+                
+                <div class="toolbar-section">
+                    <button class="action-btn btn-undo" onclick="undo()" title="Undo (Ctrl+Z)">↩️ Undo</button>
+                    <button class="action-btn btn-reset" onclick="resetChanges()" title="Reset all masks">🔄 Reset</button>
+                    <button class="action-btn btn-redo" onclick="redo()" title="Redo (Ctrl+Y)">↪️ Redo</button>
+                </div>
+                
+                <div class="toolbar-divider"></div>
+                
+                <div class="toolbar-section">
+                    <button class="action-btn btn-mask" id="toggleMaskBtn" onclick="toggleMaskVisibility()" title="Hide/Show mask overlay">👁️ Hide Mask</button>
+                    <button class="action-btn btn-3d" onclick="show3DView()" title="Show 3D visualization of masks">🧊 3D View</button>
+                    <button class="action-btn btn-server" onclick="sendMaskToServer()" title="Save masks to server">💾 Save Mask to Server</button>
+                </div>
+                
+                <div class="toolbar-divider"></div>
+                
+                <div class="toolbar-section measurement-tools">
+                    <button class="action-btn btn-measure" id="distanceMeasureBtn" onclick="toggleDistanceMeasurement()" title="Distance measurement (M)">📏 Distance</button>
+                    <button class="action-btn btn-measure" id="angleMeasureBtn" onclick="toggleAngleMeasurement()" title="Angle measurement (N)">📐 Angle</button>
+                    <button class="action-btn btn-measure-delete" id="deleteSelectedBtn" onclick="deleteSelectedMeasurement()" title="Delete selected measurement (Del)">🗑️ Delete</button>
+                    <button class="action-btn btn-measure-clear" onclick="clearSliceMeasurements()" title="Clear all measurements on this slice">🧹 Clear All</button>
+                </div>
+            </div>
+            
+            <!-- Content area with canvas and vertical nav -->
+            <div class="content-area">
+                <div class="canvas-row">
+                    <div class="canvas-container" id="canvasContainer">
+                        <div class="canvas-wrapper" id="canvasWrapper">
+                            <canvas id="annotationCanvas"></canvas>
+                        </div>
+                    </div>
+                    
+                    <!-- Vertical navigation on the right -->
+                    <div class="vertical-nav">
+                        <button class="nav-btn" onclick="prevSlice()" title="Previous Slice (←)">
+                            ▲
+                            <span>Prev</span>
+                        </button>
+                        <input type="range" id="sliceSliderVertical" class="slice-slider-vertical" min="0" max="0" value="0">
+                        <button class="nav-btn" onclick="nextSlice()" title="Next Slice (→)">
+                            ▼
+                            <span>Next</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Collapsible Polyp Panel -->
+                <div id="polypPanelContainer" class="polyp-panel-container" style="display: none;">
+                    <div class="polyp-panel-resize-handle" id="polypPanelResizeHandle" title="Drag up/down to resize"></div>
+                    <div class="polyp-panel-header" onclick="togglePolypPanel()">
+                        <h2>
+                            📋 Polyp Annotations
+                            <span class="polyp-count-badge" id="polypCountBadge">0</span>
+                        </h2>
+                        <span class="polyp-panel-toggle" id="polypPanelToggle">▼</span>
+                    </div>
+                    <div class="polyp-panel-content collapsed" id="polypPanelContent">
+                        <div class="polyp-panel">
+                            <table class="polyp-table">
+                                <thead>
+                                    <tr><th>Slices</th><th>Slice</th><th>Location</th><th>Confirmed</th><th>Histology</th><th>Size</th><th>Source</th></tr>
+                                </thead>
+                                <tbody id="polypTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Collapsible Comments Panel -->
+                <div id="commentPanelContainer" class="comment-panel-container">
+                    <div class="comment-panel-header" onclick="toggleCommentPanel()">
+                        <h2>
+                            💬 Slice Comments
+                            <span class="comment-count-badge" id="commentCountBadge" style="display: none;">0</span>
+                            <span class="total-comments-badge" id="totalCommentsBadge" style="display: none;" title="Total comments across all slices">0</span>
+                        </h2>
+                        <span class="comment-panel-toggle" id="commentPanelToggle">▶</span>
+                    </div>
+                    <div class="comment-panel-content" id="commentPanelContent">
+                        <div class="comment-input-area">
+                            <textarea id="commentTextarea" placeholder="Add a comment for slice..." rows="2"></textarea>
+                            <div class="comment-buttons">
+                                <button class="btn btn-comment-add" onclick="addComment()">➕ Add Comment</button>
+                                <button class="btn btn-comment-summary" onclick="showAllCommentsSummary()" title="View all comments">📋 Summary</button>
+                            </div>
+                        </div>
+                        <div class="comments-list" id="commentsListContainer">
+                            <div class="no-comments">No comments on this slice</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="info">
+                <strong>Instructions:</strong> Click and drag to draw. Scroll to zoom. Middle-click or Space+drag to pan. Ctrl+Arrows to pan.
+                <br><strong>Keyboard:</strong> ←/→ slices, PageUp/PageDown jump annotated, Shift+←/→ propagate mask, E eraser, R refine, B edge-brush, F fit, M measure distance, N measure angle
+                <br><strong>Measurements:</strong> Click on a measurement to select it (turns red), then press Delete/Backspace to remove it. Undo/Redo also works for measurements.
+            </div>
+        </div>
+    </div>
+    
+    <!-- Application JavaScript Modules (load in order) -->
+    <script src="/static/js/nifti.js"></script>
+    <script src="/static/js/dicom.js"></script>
+    <script src="/static/js/refinement.js"></script>
+    <script src="/static/js/visualization3d.js"></script>
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
