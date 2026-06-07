@@ -1,6 +1,29 @@
 # CORAL — COlonography Radiology Annotation Lab
 
+
 A web-based annotation tool and deep-learning pipeline for **CT colonography**. CORAL lets radiologists load CT scans (from a local folder or Google Drive), browse slices, paint segmentation masks (fluid pockets, polyps, lumen), view results in 3D, and export NIfTI masks. It also ships a PyTorch training/inference pipeline for automatic fluid-pocket segmentation.
+
+<p align="center">
+  <img src="latex_paper/coral_teaser.png" alt="CORAL overview. (A) Annotation records sidebar. (B) 3D view of lumen and fluid-pocket meshes. (C) Lumen annotation with the edge-aware brush. (D) Fluid-pocket annotation with an HU-windowed brush. (E) On-image distance measurement. (F) Polyp annotation with the slice-level &quot;teach a trainee&quot; rationale panel." width="100%">
+</p>
+
+<p align="center">
+  <sub><b>Overview of CORAL.</b>
+  (A) Annotation records sidebar, synced with the slice viewer.
+  (B) 3D view of lumen and fluid-pocket meshes.
+  (C) Lumen annotation with the edge-aware brush.
+  (D) Fluid-pocket annotation with an HU-windowed brush.
+  (E) On-image distance measurement.
+  (F) Polyp annotation alongside the slice-level <i>teach a trainee</i> rationale panel.</sub>
+</p>
+
+## 🔗 Quick links
+
+- 🚀 **Live demo**: <https://bit.ly/3Sle22X>
+- 🎬 **3-min demo video**: <https://youtu.be/hq48kqLNLD0>
+- 🎓 **Radiologist training video (30 min)**: <https://youtu.be/NXrOdGIkkpQ> — walkthrough of CORAL used to onboard radiologists for the user study.
+- 📄 **User-study task sheet**: [`user_task/annotation_task_instructions.pdf`](user_task/annotation_task_instructions.pdf) — annotation instructions handed to participants.
+- 💻 **Source code**: <https://github.com/catarina-moreira/CORAL>
 
 ---
 
@@ -25,14 +48,13 @@ A web-based annotation tool and deep-learning pipeline for **CT colonography**. 
 - Undo/redo, zoom, pan, window/level controls
 - 3D visualization of segmentation masks (Three.js: surface voxels, marching cubes, point cloud)
 - Two data sources: **local folder** (instant) and **Google Drive** (cloud)
-- PyTorch training pipeline for fluid-pocket segmentation (U-Net, Attention U-Net, ResUNet, U-Net++)
 
 ---
 
 ## Project Structure
 
 ```
-CT_Colon/
+CORAL/
 ├── app/                      # Flask web application
 │   ├── __init__.py           # App factory (registers blueprints)
 │   ├── routes/
@@ -46,7 +68,6 @@ CT_Colon/
 │   ├── css/styles.css        # CORAL stylesheet
 │   └── js/                   # main.js, dicom.js, nifti.js, refinement.js, visualization3d.js
 ├── src/
-│   ├── deep_learning/        # PyTorch training & inference
 │   ├── preprocessing/        # DICOM loaders
 │   ├── utils/                # DICOM/NIfTI utilities
 │   ├── data/                 # Metadata & class definitions
@@ -73,16 +94,16 @@ CT_Colon/
 
 ### 1. Get the code
 
-Copy the `CT_Colon/` project folder onto your machine (download it as a zip, copy it over the network, or move it from a USB drive — whatever is most convenient). Then open a terminal **inside that folder**:
+Copy the `CORAL/` project folder onto your machine (download it as a zip, copy it over the network, or move it from a USB drive — whatever is most convenient). Then open a terminal **inside that folder**:
 
 **Windows (PowerShell):**
 ```powershell
-cd path\to\CT_Colon
+cd path\to\CORAL
 ```
 
 **macOS / Linux:**
 ```bash
-cd /path/to/CT_Colon
+cd /path/to/CORAL
 ```
 
 ### 2. Create and activate a virtual environment
@@ -131,12 +152,12 @@ You can use **either** backend (local or Drive) or both. **The local backend is 
 
    **Windows example:**
    ```python
-   LOCAL_DATA_PATH = r'C:\Users\<you>\datasets\TCIA_CT_Colon'
+   LOCAL_DATA_PATH = r'C:\Users\<you>\datasets\TCIA_CORAL'
    ```
 
    **macOS/Linux example:**
    ```python
-   LOCAL_DATA_PATH = '/home/<you>/datasets/TCIA_CT_Colon'
+   LOCAL_DATA_PATH = '/home/<you>/datasets/TCIA_CORAL'
    ```
 
    > Use a raw string (`r'...'`) on Windows so backslashes are not interpreted as escape sequences. The path must already exist before launching the app.
@@ -234,50 +255,29 @@ For the deep-learning pipeline, multiple patients can be placed side-by-side und
 
 ---
 
-## Troubleshooting
-
-**`ModuleNotFoundError: No module named 'flask'` (or any other dep)**
-Your virtual environment isn't activated. Re-run the activation command from [Installation step 2](#2-create-and-activate-a-virtual-environment).
-
-**`FileNotFoundError: Credentials file 'drive_credentials.json' not found`**
-You clicked the Google Drive tab without completing the Drive setup. Either set up Drive ([section 2](#2-google-drive-optional)) or stick to the Local Folder tab.
-
-**Drive tab says "permission denied" or returns 404**
-You forgot to share the Drive folder with the service account's `client_email`. See Drive [Step 3](#step-3--share-your-drive-dataset-with-the-service-account).
-
-**Local tab shows "Local folder not configured"**
-`LOCAL_DATA_PATH` in `config.py` is empty, wrong, or points at a non-existent directory. Double-check the absolute path and that you used a raw string on Windows.
-
-**Port 5000 already in use**
-Launch on a different port: `flask run --port 5050`.
-
-**`UnicodeDecodeError` reading DICOM filenames on Windows**
-Make sure your dataset path contains no characters outside ASCII, or set `PYTHONIOENCODING=utf-8` in your environment.
-
----
-
 ## How to Cite
 
 If you use CORAL in academic work, please cite both the **tool** and the **underlying CT colonography dataset**.
 
 ### Citing CORAL
 
-> *Replace the placeholders with your own author list, year, and (if available) a paper or DOI.*
-
 **Plain text:**
 
-> Moreira, C. et al. *CORAL: COlonography Radiology Annotation Lab.* Year. Available at: `<project URL>`.
+>  Guanqi Cheng, Zaharudin Bin, Nancy Adams, Ezequiel Zorzal, Francesco Vona, Antoni Jaume-i-Capó, Mukesh Prasad, Monika Sonu, Joaquim Jorge, and Catarina Moreira.
+  2026. CORAL: COlonography Radiology Annotation Lab. 2026. Available at: `https://github.com/catarina-moreira/CORAL`.
 
 **BibTeX:**
 
 ```bibtex
-@software{coral_annotation_lab,
-  author  = {Moreira, Catarina and <co-authors>},
-  title   = {{CORAL}: {CO}lonography {R}adiology {A}nnotation {L}ab},
-  year    = {2026},
-  url     = {<project URL>},
-  note    = {Web-based annotation tool for CT colonography}
-}
+ @MISC{cheng2026coral,
+    author    = {Cheng, Guanqi and Bin, Zaharudin and Adams, Nancy and
+                 Zorzal, Ezequiel and Vona, Francesco and
+                 Jaume-i-Cap{\'o}, Antoni and Prasad, Mukesh and
+                 Sonu, Monika and Jorge, Joaquim and Moreira, Catarina},
+    title     = {{CORAL}: {CO}lonography {R}adiology {A}nnotation {L}ab},
+    year      = {2026},
+    url       = {https://github.com/catarina-moreira/CORAL}
+  }
 ```
 
 ### Citing the CT colonography dataset
@@ -286,7 +286,7 @@ CORAL is developed and tested on **The Cancer Imaging Archive (TCIA) CT Colonogr
 
 **Dataset:**
 
-> Smith, K., Clark, K., Bennett, W., Nolan, T., Kirby, J., Wolfsberger, M., Moulton, J., Vendt, B., & Freymann, J. (2015). *Data From CT_COLONOGRAPHY* [Data set]. The Cancer Imaging Archive. https://doi.org/10.7937/K9/TCIA.2015.NWTESAY1
+> Smith, K., Clark, K., Bennett, W., Nolan, T., Kirby, J., Wolfsberger, M., Moulton, J., Vendt, B., & Freymann, J. (2015). *Data From CORALOGRAPHY* [Data set]. The Cancer Imaging Archive. https://doi.org/10.7937/K9/TCIA.2015.NWTESAY1
 
 **TCIA:**
 
