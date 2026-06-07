@@ -1,10 +1,10 @@
 # CORAL — COlonography Radiology Annotation Lab
 
 
-A web-based annotation tool and deep-learning pipeline for **CT colonography**. CORAL lets radiologists load CT scans (from a local folder or Google Drive), browse slices, paint segmentation masks (fluid pockets, polyps, lumen), view results in 3D, and export NIfTI masks. It also ships a PyTorch training/inference pipeline for automatic fluid-pocket segmentation.
+**CORAL** is a browser-based annotation environment for **CT colonography (CTC)**, the imaging modality at the heart of non-invasive colorectal screening and computer-aided diagnosis. CTC interpretation depends on three intertwined structures, namely the colonic lumen, intracolonic fluid pockets, and polyps, but no existing open tool supports their joint voxel-level annotation or captures the radiologist reasoning behind each finding. CORAL closes that gap with an end-to-end workflow that combines joint lumen, fluid-pocket, and polyp annotation; six label-aware brushes (four of which encode HU-based domain knowledge); four in-browser refinement methods (GrabCut-style, Random-Walker-style, Combined, and Fluid-aware GrabCut-style); slice-to-slice mask propagation; 3D mesh visualisation; on-image distance and angle measurement; and a slice-level *teach a trainee* comment panel that records the radiologist's free-text rationale for each finding. All image processing runs in the browser; no annotation data is uploaded to a remote server. The repository also ships a PyTorch training and inference pipeline for automatic fluid-pocket segmentation.
 
 <p align="center">
-  <img src="latex_paper/coral_teaser.png" alt="CORAL overview. (A) Annotation records sidebar. (B) 3D view of lumen and fluid-pocket meshes. (C) Lumen annotation with the edge-aware brush. (D) Fluid-pocket annotation with an HU-windowed brush. (E) On-image distance measurement. (F) Polyp annotation with the slice-level &quot;teach a trainee&quot; rationale panel." width="100%">
+  <img src="app_demo_images/coral_teaser.png" alt="CORAL overview. (A) Annotation records sidebar. (B) 3D view of lumen and fluid-pocket meshes. (C) Lumen annotation with the edge-aware brush. (D) Fluid-pocket annotation with an HU-windowed brush. (E) On-image distance measurement. (F) Polyp annotation with the slice-level &quot;teach a trainee&quot; rationale panel." width="100%">
 </p>
 
 <p align="center">
